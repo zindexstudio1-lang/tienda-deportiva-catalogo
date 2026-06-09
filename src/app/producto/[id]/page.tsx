@@ -8,10 +8,12 @@ import Navbar from '@/components/Navbar';
 import ProductCard from '@/components/ProductCard';
 import { ArrowLeft, ShoppingBag, Check } from 'lucide-react';
 import { useCart } from '@/store/cartStore';
+import { useRouter } from 'next/navigation';
 
 export default function ProductDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const product = products.find(p => p.id === id);
+  const router = useRouter();
   
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [isAdded, setIsAdded] = useState(false); 
@@ -46,14 +48,18 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-900 antialiased">
-      <Navbar activeCategory="" setActiveCategory={() => {}} />
+      <Navbar />
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 bg-white mt-8 shadow-sm rounded-lg">
         <div className="mb-4 pt-4">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-[#002B5E] transition-colors">
+          {/* CAMBIAMOS Link POR button */}
+          <button 
+            onClick={() => router.back()} 
+            className="inline-flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-[#002B5E] transition-colors"
+          >
             <ArrowLeft className="w-4 h-4" />
             Volver al catálogo
-          </Link>
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-4 pb-16">

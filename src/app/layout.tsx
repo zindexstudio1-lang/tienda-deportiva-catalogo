@@ -1,13 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import CartDrawer from "@/components/CartDrawer"; // 1. IMPORTAMOS EL CARRITO
+import CartDrawer from "@/components/CartDrawer"; 
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Tienda Deportiva",
   description: "Equípate para el rendimiento",
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, 
 };
 
 export default function RootLayout({
@@ -17,11 +24,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={inter.className}>
-        {/* Aquí cargan todas las páginas */}
+      <body className={`${inter.className} overflow-x-hidden antialiased bg-[#F8F9FA]`}>
         {children}
-        
-        {/* 2. AQUÍ INYECTAMOS EL CARRITO PARA QUE EXISTA EN TODA LA WEB */}
         <CartDrawer />
       </body>
     </html>
