@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import CartDrawer from "@/components/CartDrawer"; // 1. IMPORTAMOS EL CARRITO
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -15,9 +16,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // Aquí está la solución al error rojo: suppressHydrationWarning
     <html lang="es" suppressHydrationWarning>
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        {/* Aquí cargan todas las páginas */}
+        {children}
+        
+        {/* 2. AQUÍ INYECTAMOS EL CARRITO PARA QUE EXISTA EN TODA LA WEB */}
+        <CartDrawer />
+      </body>
     </html>
   );
 }
