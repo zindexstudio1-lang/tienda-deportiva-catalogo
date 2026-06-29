@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Dumbbell, Shirt, Layers, ShoppingBag, Menu, X } from 'lucide-react'; 
+import { Dumbbell, Shirt, Layers, ShoppingBag, Menu, X, Home } from 'lucide-react'; 
 import { useCart } from '@/store/cartStore'; 
 import { usePathname } from 'next/navigation'; 
 
@@ -39,9 +39,25 @@ export default function Navbar() {
 
             <div className="flex items-center gap-2 md:gap-4">
               <nav className="hidden md:flex space-x-1 md:space-x-4">
+                
+                {/* BOTÓN DE INICIO NUEVO */}
+                <Link
+                  href="/"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${
+                    pathname === '/'
+                      ? 'bg-[#002B5E] text-white shadow-sm'
+                      : 'text-gray-600 hover:text-[#002B5E] hover:bg-gray-100'
+                  }`}
+                >
+                  <Home className="h-4 w-4" />
+                  <span>Inicio</span>
+                </Link>
+
+                {/* ITERACIÓN DE LAS CATEGORÍAS */}
                 {categories.map((cat) => {
                   const Icon = cat.icon;
-                  const isActive = pathname === `/categoria/${cat.id}` || (pathname === '/' && cat.id === 'todos');
+                  // Ajustamos para que "Todos" solo esté activo en la ruta exacta /categoria/todos
+                  const isActive = pathname === `/categoria/${cat.id}`;
                   return (
                     <Link
                       key={cat.id}
@@ -82,8 +98,7 @@ export default function Navbar() {
         </div>
       </header>
 
-      {/* 2. EL MENÚ MÓVIL AHORA ESTÁ AFUERA DEL HEADER */}
-      {/* Fondo oscuro */}
+      {/* 2. EL MENÚ MÓVIL */}
       <div 
         className={`md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] transition-opacity duration-300 ${
           isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
@@ -91,7 +106,6 @@ export default function Navbar() {
         onClick={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* Panel Blanco */}
       <div 
         className={`md:hidden fixed top-0 right-0 w-[85%] max-w-sm h-[100dvh] bg-white z-[110] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col pt-20 ${
           isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
@@ -99,23 +113,40 @@ export default function Navbar() {
       >
         <div className="p-6 flex-1 overflow-y-auto">
           <nav className="flex flex-col gap-2">
+            
+            {/* BOTÓN INICIO EN MÓVIL CON ICONO */}
             <Link 
               href="/" 
               onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center text-left p-4 text-lg font-bold text-gray-900 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+              className={`flex items-center gap-3 p-4 text-lg font-bold rounded-xl transition-colors ${
+                pathname === '/' 
+                  ? 'bg-[#002B5E] text-white' 
+                  : 'text-gray-600 bg-gray-50 hover:bg-gray-100 hover:text-[#002B5E]'
+              }`}
             >
+              <Home className="h-5 w-5" />
               Inicio
             </Link>
-            {categories.map((cat) => (
-              <Link
-                key={cat.id}
-                href={`/categoria/${cat.id}`}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center text-left p-4 text-lg font-bold text-gray-600 hover:text-[#002B5E] hover:bg-gray-50 rounded-xl transition-colors"
-              >
-                {cat.label}
-              </Link>
-            ))}
+
+            {categories.map((cat) => {
+              const Icon = cat.icon;
+              const isActive = pathname === `/categoria/${cat.id}`;
+              return (
+                <Link
+                  key={cat.id}
+                  href={`/categoria/${cat.id}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 p-4 text-lg font-bold rounded-xl transition-colors ${
+                    isActive
+                      ? 'bg-[#002B5E] text-white'
+                      : 'text-gray-600 bg-transparent hover:bg-gray-50 hover:text-[#002B5E]'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  {cat.label}
+                </Link>
+              );
+            })}
           </nav>
         </div>
       </div>

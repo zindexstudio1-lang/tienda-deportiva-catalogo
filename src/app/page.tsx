@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '../components/Navbar';
 import ProductCard from '../components/ProductCard';
 import { products } from '../data/products';
-import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowRight, Zap, Dumbbell, Shirt } from 'lucide-react';
 import Link from 'next/link';
 
 const BANNERS = [
@@ -12,9 +12,16 @@ const BANNERS = [
   { id: 2, imageDesktop: '/anuncioPortugal.png', imageMobile: '/anunPortuCelu.png', alt: 'Premium' }
 ];
 
+const TOP_ANNOUNCEMENTS = [
+  "🔥 Envíos a todo el Perú",
+  "⚡ Aceptamos Yape y Plin",
+  "🚚 Envío gratis por compras mayores a S/ 200"
+];
+
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const sliderRef = useRef<HTMLDivElement>(null); // Referencia para el carrusel de productos
+  const [currentTopAnnouncement, setCurrentTopAnnouncement] = useState(0);
+  const sliderRef = useRef<HTMLDivElement>(null);
 
   const nextSlide = () => setCurrentSlide((prev) => (prev === BANNERS.length - 1 ? 0 : prev + 1));
   const prevSlide = () => setCurrentSlide((prev) => (prev === 0 ? BANNERS.length - 1 : prev - 1));
@@ -25,42 +32,103 @@ export default function Home() {
     return () => clearInterval(slideInterval);
   }, []);
 
-  // Función para mover el carrusel de productos
+  useEffect(() => {
+    const announcementInterval = setInterval(() => {
+      setCurrentTopAnnouncement((prev) => (prev === TOP_ANNOUNCEMENTS.length - 1 ? 0 : prev + 1));
+    }, 3000);
+    return () => clearInterval(announcementInterval);
+  }, []);
+
   const scrollProducts = (direction: 'left' | 'right') => {
     if (sliderRef.current) {
-      const scrollAmount = direction === 'left' ? -300 : 300;
+      const scrollAmount = direction === 'left' ? -320 : 320;
       sliderRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
   };
 
-  // Seleccionamos solo algunos productos para el inicio (ej. los primeros 6)
   const destacados = products.slice(0, 6);
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-900 antialiased selection:bg-[#002B5E] selection:text-white">
+      
+      {/* 1. TOP BAR */}
+      <div className="bg-[#002B5E] text-white text-xs font-medium py-2 px-4 text-center overflow-hidden h-8 flex items-center justify-center">
+        <div className="relative w-full max-w-md">
+          {TOP_ANNOUNCEMENTS.map((text, index) => (
+            <p 
+              key={index} 
+              className={`absolute top-1/2 left-0 w-full transform -translate-y-1/2 transition-all duration-500 ease-in-out flex items-center justify-center gap-2
+                ${currentTopAnnouncement === index ? 'opacity-100 translate-y-[-50%]' : 'opacity-0 translate-y-full pointer-events-none'}`}
+            >
+              <Zap className="w-3 h-3 text-[#C5A059]" /> {text}
+            </p>
+          ))}
+        </div>
+      </div>
+
       <Navbar />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* HERO BANNER (Igual que antes) */}
-        <div className="relative mb-16 group">
-          <div className="relative w-full overflow-hidden rounded-[20px] md:rounded-[32px] bg-gray-100 shadow-sm flex items-center justify-center">
+        
+        {/* 2. HERO BANNER */}
+        <div className="relative mb-12 group">
+          <div className="relative w-full overflow-hidden rounded-[20px] md:rounded-[32px] bg-gray-200 shadow-sm flex items-center justify-center aspect-[16/9] md:aspect-[21/9]">
+            
             <picture className="w-full">
               <source media="(min-width: 768px)" srcSet={BANNERS[0].imageDesktop} />
-              <img src={BANNERS[0].imageMobile} alt="placeholder" className="w-full h-auto max-h-[600px] object-contain opacity-0 pointer-events-none" />
+              <img src={BANNERS[0].imageMobile} alt="placeholder" className="w-full h-full object-cover opacity-0 pointer-events-none" />
             </picture>
+
             {BANNERS.map((banner, index) => (
-              <div key={banner.id} className={`absolute inset-0 transition-opacity duration-700 ease-in-out flex items-center justify-center ${currentSlide === index ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
-                <picture className="w-full h-full flex items-center justify-center bg-[#111111]">
+              <div key={banner.id} className={`absolute inset-0 transition-opacity duration-700 ease-in-out flex items-center justify-center bg-[#111111] ${currentSlide === index ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
+                <picture className="w-full h-full">
                   <source media="(min-width: 768px)" srcSet={banner.imageDesktop} />
-                  <img src={banner.imageMobile} alt={banner.alt} className="w-full h-full max-h-[600px] object-contain" />
+                  <img src={banner.imageMobile} alt={banner.alt} className="w-full h-full object-cover" />
                 </picture>
               </div>
             ))}
-            {/* Flechas del banner... (omitidas por brevedad pero siguen funcionando con los estados) */}
+
+            <button onClick={prevSlide} className="absolute left-4 z-20 p-2 rounded-full bg-white/30 backdrop-blur-md text-white hover:bg-white hover:text-[#002B5E] transition-all opacity-0 group-hover:opacity-100">
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button onClick={nextSlide} className="absolute right-4 z-20 p-2 rounded-full bg-white/30 backdrop-blur-md text-white hover:bg-white hover:text-[#002B5E] transition-all opacity-0 group-hover:opacity-100">
+              <ChevronRight className="w-6 h-6" />
+            </button>
+
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20 flex gap-2">
+              {BANNERS.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentSlide(index)}
+                  className={`w-2 h-2 rounded-full transition-all ${currentSlide === index ? 'bg-white w-6' : 'bg-white/50'}`}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* SECCIÓN PRODUCTOS DESTACADOS (SLIDER HORIZONTAL) */}
+        {/* 3. BANNERS DIVISORIOS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-16">
+          <Link href="/categoria/camisetas" className="group relative overflow-hidden rounded-[20px] bg-gradient-to-r from-[#002B5E] to-[#004080] p-6 text-white shadow-sm flex items-center justify-between transition-transform hover:-translate-y-1">
+            <div className="z-10 relative">
+              <p className="text-sm font-bold tracking-widest text-[#C5A059] uppercase mb-1">Pasión por el Fútbol</p>
+              <h3 className="text-2xl font-black mb-2">Camisetas 2025</h3>
+              <span className="inline-flex items-center gap-1 text-sm font-medium hover:underline">Ver catálogo <ArrowRight className="w-4 h-4" /></span>
+            </div>
+            <Shirt className="w-24 h-24 absolute right-4 opacity-10 transform -rotate-12 group-hover:scale-110 transition-transform duration-500" />
+          </Link>
+
+          <Link href="/categoria/fuerza-gym" className="group relative overflow-hidden rounded-[20px] bg-white border border-gray-200 p-6 text-slate-900 shadow-sm flex items-center justify-between transition-transform hover:-translate-y-1">
+            <div className="z-10 relative">
+              <p className="text-sm font-bold tracking-widest text-gray-500 uppercase mb-1">Arma tu Gym en casa</p>
+              <h3 className="text-2xl font-black text-[#002B5E] mb-2">Fuerza & Gym</h3>
+              <span className="inline-flex items-center gap-1 text-sm font-bold text-[#002B5E] hover:text-[#C5A059] transition-colors">Ver equipos <ArrowRight className="w-4 h-4" /></span>
+            </div>
+            <Dumbbell className="w-24 h-24 absolute right-4 opacity-5 transform rotate-12 group-hover:scale-110 transition-transform duration-500 text-slate-900" />
+          </Link>
+        </div>
+
+        {/* 4. PRODUCTOS DESTACADOS */}
         <div className="mb-16">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -68,20 +136,18 @@ export default function Home() {
               <h2 className="text-3xl font-black text-[#002B5E]">Lo más vendido</h2>
             </div>
             <div className="hidden md:flex gap-2">
-              <button onClick={() => scrollProducts('left')} className="p-2 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors">
-                <ChevronLeft className="w-5 h-5 text-[#002B5E]" />
+              <button onClick={() => scrollProducts('left')} className="p-2 rounded-full border border-gray-300 hover:bg-[#002B5E] hover:text-white hover:border-[#002B5E] transition-all">
+                <ChevronLeft className="w-5 h-5" />
               </button>
-              <button onClick={() => scrollProducts('right')} className="p-2 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors">
-                <ChevronRight className="w-5 h-5 text-[#002B5E]" />
+              <button onClick={() => scrollProducts('right')} className="p-2 rounded-full border border-gray-300 hover:bg-[#002B5E] hover:text-white hover:border-[#002B5E] transition-all">
+                <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          {/* Contenedor scrolleable */}
           <div 
             ref={sliderRef}
-            className="flex overflow-x-auto gap-6 pb-8 snap-x snap-mandatory hide-scrollbar"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }} // Oculta la barra de scroll
+            className="flex overflow-x-auto gap-6 pb-8 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           >
             {destacados.map((product) => (
               <div key={product.id} className="min-w-[280px] sm:min-w-[300px] snap-start">
