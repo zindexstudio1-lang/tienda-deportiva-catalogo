@@ -1,49 +1,99 @@
 'use client';
 
-import React, { useState, use } from 'react';
-import Link from 'next/link';
-// Usamos el alias @/ para evitar conflictos de rutas
-import { products } from '@/data/products';
+import React, { useState, useEffect, use } from 'react';
 import Navbar from '@/components/Navbar';
 import ProductCard from '@/components/ProductCard';
 import { ArrowLeft, ShoppingBag, Check } from 'lucide-react';
 import { useCart } from '@/store/cartStore';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 export default function ProductDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const product = products.find(p => p.id === id);
   const router = useRouter();
   
+  const [product, setProduct] = useState<any>(null);
+  const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [isAdded, setIsAdded] = useState(false); 
-  const [showError, setShowError] = useState(false); // Nuevo estado para el error de talla
+  const [showError, setShowError] = useState(false); 
   
   const { addToCart } = useCart();
 
-  if (!product) {
-    return <div className="min-h-screen flex items-center justify-center text-2xl font-bold text-[#002B5E]">Producto no encontrado</div>;
+  useEffect(() => {
+    async function fetchProduct() {
+      const { data: productData, error: productError } = await supabase
+        .from('productos')
+        .select('*, categorias(slug)')
+        .eq('codigo', id)
+        .single();
+
+      if (productData && !productError) {
+        const formattedProduct = {
+          id: productData.codigo,
+          name: productData.nombre,
+          price: productData.precio,
+          image: productData.imagen_url,
+          description: productData.descripcion || 'Producto de alta calidad.',
+          category: productData.categorias?.slug,
+          sizes: productData.categorias?.slug === 'camisetas' ? ['S', 'M', 'L', 'XL'] : null 
+        };
+        setProduct(formattedProduct);
+
+        const { data: relatedData } = await supabase
+          .from('productos')
+          .select('*')
+          .eq('categoria_id', productData.categoria_id)
+          .neq('codigo', id)
+          .limit(4);
+
+        if (relatedData) {
+          const formattedRelated = relatedData.map(p => ({
+            id: p.codigo,
+            name: p.nombre,
+            price: p.precio,
+            image: p.imagen_url,
+            category: 'dinamico'
+          }));
+          setRelatedProducts(formattedRelated);
+        }
+      }
+      setLoading(false);
+    }
+    
+    fetchProduct();
+  }, [id]);
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center text-2xl font-bold text-[#002B5E]">Cargando...</div>;
   }
 
-  const relatedProducts = products
-    .filter(p => p.category === product.category && p.id !== product.id)
-    .slice(0, 4);
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-[#F8F9FA] flex flex-col items-center justify-center text-[#002B5E]">
+        <h2 className="text-2xl font-bold mb-4">Producto no encontrado</h2>
+        <button onClick={() => router.back()} className="text-gray-500 hover:text-[#002B5E] flex items-center gap-2 font-bold">
+          <ArrowLeft className="w-4 h-4" /> Volver al catálogo
+        </button>
+      </div>
+    );
+  }
 
   const handleAddToCart = () => {
-    // Verificamos si falta la talla
     if (product.sizes && !selectedSize) {
-      setShowError(true); // Mostramos el mensaje de error visual
+      setShowError(true); 
       return;
     }
     
-    setShowError(false); // Ocultamos el error por si estaba activo
+    setShowError(false); 
     addToCart(product, selectedSize);
 
-    // Activamos la animación visual de "Agregado"
     setIsAdded(true);
     setTimeout(() => {
       setIsAdded(false);
-    }, 2000); // Vuelve a la normalidad después de 2 segundos
+    }, 2000); 
   };
 
   return (
@@ -52,7 +102,6 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 bg-white mt-8 shadow-sm rounded-lg">
         <div className="mb-4 pt-4">
-          {/* CAMBIAMOS Link POR button */}
           <button 
             onClick={() => router.back()} 
             className="inline-flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-[#002B5E] transition-colors"
@@ -87,16 +136,15 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
                   value={selectedSize}
                   onChange={(e) => {
                     setSelectedSize(e.target.value);
-                    setShowError(false); // Oculta el error automáticamente al elegir talla
+                    setShowError(false);
                   }}
                 >
                   <option value="" disabled>Seleccionar</option>
-                  {product.sizes.map(size => (
+                  {product.sizes.map((size: string) => (
                     <option key={size} value={size}>{size}</option>
                   ))}
                 </select>
 
-                {/* MENSAJE DE ERROR ELEGANTE */}
                 {showError && (
                   <p className="text-red-500 text-xs font-bold mt-2 flex items-center gap-1.5 animate-pulse">
                     <span className="w-1.5 h-1.5 bg-red-500 rounded-full inline-block"></span>
@@ -106,10 +154,9 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               </div>
             )}
 
-            {/* BOTÓN CON LÓGICA VISUAL */}
             <button
               onClick={handleAddToCart}
-              disabled={isAdded} // Deshabilita el botón mientras dice "Agregado"
+              disabled={isAdded}
               className={`flex items-center justify-center gap-2 w-full md:w-auto px-8 py-3 rounded text-sm font-bold text-white transition-all shadow-sm ${
                 (product.sizes && !selectedSize) 
                   ? 'bg-gray-400 cursor-not-allowed' 

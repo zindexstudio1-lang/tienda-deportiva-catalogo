@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '../components/Navbar';
 import ProductCard from '../components/ProductCard';
-import { products } from '../data/products';
-import { ChevronLeft, ChevronRight, ArrowRight, Zap, Dumbbell, Shirt } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { ChevronLeft, ChevronRight, ArrowRight, Zap, Dumbbell, Shirt, Trophy } from 'lucide-react';
 import Link from 'next/link';
 
 const BANNERS = [
@@ -22,6 +22,7 @@ export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [currentTopAnnouncement, setCurrentTopAnnouncement] = useState(0);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const [destacados, setDestacados] = useState<any[]>([]);
 
   const nextSlide = () => setCurrentSlide((prev) => (prev === BANNERS.length - 1 ? 0 : prev + 1));
   const prevSlide = () => setCurrentSlide((prev) => (prev === 0 ? BANNERS.length - 1 : prev - 1));
@@ -39,14 +40,33 @@ export default function Home() {
     return () => clearInterval(announcementInterval);
   }, []);
 
+  useEffect(() => {
+    async function cargarProductos() {
+      const { data, error } = await supabase
+        .from('productos')
+        .select('*')
+        .limit(6);
+
+      if (data && !error) {
+        const productosFormateados = data.map(item => ({
+          id: item.codigo,
+          name: item.nombre,
+          price: item.precio,
+          image: item.imagen_url,
+          category: 'dinamico'
+        }));
+        setDestacados(productosFormateados);
+      }
+    }
+    cargarProductos();
+  }, []);
+
   const scrollProducts = (direction: 'left' | 'right') => {
     if (sliderRef.current) {
       const scrollAmount = direction === 'left' ? -320 : 320;
       sliderRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
   };
-
-  const destacados = products.slice(0, 6);
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-900 antialiased selection:bg-[#002B5E] selection:text-white">
@@ -72,15 +92,14 @@ export default function Home() {
         
         {/* 2. HERO BANNER */}
         <div className="relative mb-12 group">
-          <div className="relative w-full overflow-hidden rounded-[20px] md:rounded-[32px] bg-gray-200 shadow-sm flex items-center justify-center aspect-[16/9] md:aspect-[21/9]">
-            
-            <picture className="w-full">
+          <div className="relative w-full overflow-hidden rounded-[20px] md:rounded-[32px] bg-gray-200 shadow-sm flex items-center justify-center aspect-[3/4] sm:aspect-[4/3] md:aspect-[21/9]">
+            <picture className="w-full h-full">
               <source media="(min-width: 768px)" srcSet={BANNERS[0].imageDesktop} />
               <img src={BANNERS[0].imageMobile} alt="placeholder" className="w-full h-full object-cover opacity-0 pointer-events-none" />
             </picture>
 
             {BANNERS.map((banner, index) => (
-              <div key={banner.id} className={`absolute inset-0 transition-opacity duration-700 ease-in-out flex items-center justify-center bg-[#111111] ${currentSlide === index ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
+              <div key={banner.id} className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${currentSlide === index ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
                 <picture className="w-full h-full">
                   <source media="(min-width: 768px)" srcSet={banner.imageDesktop} />
                   <img src={banner.imageMobile} alt={banner.alt} className="w-full h-full object-cover" />
@@ -88,19 +107,29 @@ export default function Home() {
               </div>
             ))}
 
-            <button onClick={prevSlide} className="absolute left-4 z-20 p-2 rounded-full bg-white/30 backdrop-blur-md text-white hover:bg-white hover:text-[#002B5E] transition-all opacity-0 group-hover:opacity-100">
-              <ChevronLeft className="w-6 h-6" />
+            <button 
+              onClick={prevSlide} 
+              className="absolute left-4 z-20 p-3 rounded-lg bg-white shadow-md text-slate-900 hover:bg-gray-50 active:scale-95 transition-all flex items-center justify-center opacity-90 md:opacity-0 md:group-hover:opacity-100"
+            >
+              <ChevronLeft className="w-5 h-5 md:w-6 md:h-6" />
             </button>
-            <button onClick={nextSlide} className="absolute right-4 z-20 p-2 rounded-full bg-white/30 backdrop-blur-md text-white hover:bg-white hover:text-[#002B5E] transition-all opacity-0 group-hover:opacity-100">
-              <ChevronRight className="w-6 h-6" />
+            <button 
+              onClick={nextSlide} 
+              className="absolute right-4 z-20 p-3 rounded-lg bg-white shadow-md text-slate-900 hover:bg-gray-50 active:scale-95 transition-all flex items-center justify-center opacity-90 md:opacity-0 md:group-hover:opacity-100"
+            >
+              <ChevronRight className="w-5 h-5 md:w-6 md:h-6" />
             </button>
 
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20 flex gap-2">
+            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-20 flex gap-2 items-center">
               {BANNERS.map((_, index) => (
                 <button
                   key={index}
                   onClick={() => setCurrentSlide(index)}
-                  className={`w-2 h-2 rounded-full transition-all ${currentSlide === index ? 'bg-white w-6' : 'bg-white/50'}`}
+                  className={`rounded-full transition-all duration-300 ${
+                    currentSlide === index 
+                      ? 'bg-[#C5A059] w-8 h-2'
+                      : 'bg-transparent border-[1.5px] border-white/80 w-2 h-2'
+                  }`}
                 />
               ))}
             </div>
@@ -108,7 +137,7 @@ export default function Home() {
         </div>
 
         {/* 3. BANNERS DIVISORIOS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-16">
           <Link href="/categoria/camisetas" className="group relative overflow-hidden rounded-[20px] bg-gradient-to-r from-[#002B5E] to-[#004080] p-6 text-white shadow-sm flex items-center justify-between transition-transform hover:-translate-y-1">
             <div className="z-10 relative">
               <p className="text-sm font-bold tracking-widest text-[#C5A059] uppercase mb-1">Pasión por el Fútbol</p>
@@ -116,6 +145,15 @@ export default function Home() {
               <span className="inline-flex items-center gap-1 text-sm font-medium hover:underline">Ver catálogo <ArrowRight className="w-4 h-4" /></span>
             </div>
             <Shirt className="w-24 h-24 absolute right-4 opacity-10 transform -rotate-12 group-hover:scale-110 transition-transform duration-500" />
+          </Link>
+
+          <Link href="/categoria/balones" className="group relative overflow-hidden rounded-[20px] bg-gradient-to-r from-[#C5A059] to-[#d4b475] p-6 text-white shadow-sm flex items-center justify-between transition-transform hover:-translate-y-1">
+            <div className="z-10 relative">
+              <p className="text-sm font-bold tracking-widest text-white/80 uppercase mb-1">Anota un Gol</p>
+              <h3 className="text-2xl font-black mb-2">Balones</h3>
+              <span className="inline-flex items-center gap-1 text-sm font-medium hover:underline">Ver catálogo <ArrowRight className="w-4 h-4" /></span>
+            </div>
+            <Trophy className="w-24 h-24 absolute right-4 opacity-20 transform rotate-12 group-hover:scale-110 transition-transform duration-500" />
           </Link>
 
           <Link href="/categoria/fuerza-gym" className="group relative overflow-hidden rounded-[20px] bg-white border border-gray-200 p-6 text-slate-900 shadow-sm flex items-center justify-between transition-transform hover:-translate-y-1">
@@ -147,10 +185,10 @@ export default function Home() {
 
           <div 
             ref={sliderRef}
-            className="flex overflow-x-auto gap-6 pb-8 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            className="flex overflow-x-auto gap-6 pb-8 snap-x snap-proximity scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           >
             {destacados.map((product) => (
-              <div key={product.id} className="min-w-[280px] sm:min-w-[300px] snap-start">
+              <div key={product.id} className="min-w-[280px] w-[280px] sm:min-w-[300px] sm:w-[300px] snap-start shrink-0">
                 <ProductCard product={product} />
               </div>
             ))}

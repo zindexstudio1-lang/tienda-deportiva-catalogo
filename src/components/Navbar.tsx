@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Dumbbell, Shirt, Layers, ShoppingBag, Menu, X, Home } from 'lucide-react'; 
+import { Dumbbell, Shirt, Layers, ShoppingBag, Menu, X, Home, Trophy } from 'lucide-react'; 
 import { useCart } from '@/store/cartStore'; 
 import { usePathname } from 'next/navigation'; 
+
 
 export default function Navbar() {
   const { items, openCart } = useCart();
@@ -21,6 +22,7 @@ export default function Navbar() {
   const categories = [
     { id: 'todos', label: 'Todos', icon: Layers },
     { id: 'camisetas', label: 'Camisetas', icon: Shirt },
+    { id: 'balones', label: 'Balones', icon: Trophy },
     { id: 'fuerza', label: 'Fuerza & Gym', icon: Dumbbell },
   ];
 

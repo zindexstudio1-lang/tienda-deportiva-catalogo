@@ -21,7 +21,7 @@ export default function CartDrawer() {
     items.forEach((item, index) => {
       const talla = item.selectedSize ? ` (Talla: ${item.selectedSize})` : '';
       message += `${index + 1}. *${item.name}* ${talla}\n`;
-      message += `   SKU: ${item.sku} | Cant: ${item.quantity} | S/ ${(item.price * item.quantity).toFixed(2)}\n\n`;
+      message += `   SKU: ${item.id} | Cant: ${item.quantity} | S/ ${(item.price * item.quantity).toFixed(2)}\n\n`;
     });
 
     message += `*TOTAL A PAGAR: S/ ${getTotal().toFixed(2)}*\n\n`;
