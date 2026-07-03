@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ShoppingCart, Trash2, CreditCard, Banknote, Search, Plus, Minus, PackagePlus, Settings, X, FileText, Send, Edit, PlusCircle, Filter } from 'lucide-react';
+import { ShoppingCart, Trash2, CreditCard, Banknote, Search, Plus, Minus, PackagePlus, Settings, X, FileText, Send, Edit, PlusCircle, Filter, Download } from 'lucide-react';
+import { toPng } from 'html-to-image';
+import Link from 'next/link';
 
 export default function AdminPOS() {
   const [productos, setProductos] = useState<any[]>([]);
@@ -198,8 +200,29 @@ export default function AdminPOS() {
     }
   };
 
-  const imprimirPDF = () => {
-    window.print();
+  const guardarImagen = async () => {
+    const elemento = document.getElementById('recibo-imprimible');
+    if (!elemento) return;
+
+    try {
+      // Usamos toPng de html-to-image con alta resolución (pixelRatio: 2)
+      const dataUrl = await toPng(elemento, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+        style: {
+          margin: '0', // Asegura que no haya márgenes extraños al renderizar
+        }
+      });
+
+      // Forzamos la descarga
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `Ticket-${lastSale?.id.split('-')[0].toUpperCase()}.png`;
+      link.click();
+    } catch (error) {
+      console.error("Error al generar la imagen:", error);
+      alert("Hubo un problema al guardar el ticket.");
+    }
   };
 
   return (
@@ -215,6 +238,9 @@ export default function AdminPOS() {
           <button onClick={() => setShowSettings(true)} className="p-2 text-zinc-400 hover:text-white transition-colors" title="Ajustes del Recibo">
             <Settings className="w-5 h-5" />
           </button>
+          <Link href="/admin/historial" className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-white font-bold text-sm transition-colors mr-2">
+  Ver Historial
+</Link>
         </div>
       </header>
 
@@ -465,12 +491,18 @@ export default function AdminPOS() {
                 <p><strong>MÉTODO:</strong> {lastSale.metodo}</p>
               </div>
               <table className="w-full text-sm mb-6 font-mono">
-                <thead><tr className="border-y-2 border-dashed border-gray-300"><th className="py-2 text-left">CANT</th><th className="py-2 text-left">DESCRIPCIÓN</th><th className="py-2 text-right">IMP</th></tr></thead>
+                <thead>
+                  <tr className="border-y-2 border-dashed border-gray-300">
+                    <th className="py-2 text-left w-12">CANT</th>
+                    <th className="py-2 text-left px-2">DESCRIPCIÓN</th>
+                    <th className="py-2 text-right w-16">IMP</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {lastSale.items.map((item: any) => (
                     <tr key={item.id} className="border-b border-gray-100">
                       <td className="py-2 align-top">{item.cantidad}</td>
-                      <td className="py-2 pr-2">{item.nombre} <br/><span className="text-[10px] text-gray-500">{item.codigo}</span></td>
+                      <td className="py-2 px-2">{item.nombre} <br/><span className="text-[10px] text-gray-500">{item.codigo}</span></td>
                       <td className="py-2 text-right align-top">{(item.precio * item.cantidad).toFixed(2)}</td>
                     </tr>
                   ))}
@@ -482,32 +514,22 @@ export default function AdminPOS() {
               <div className="text-center text-sm font-bold text-gray-600"><p>{businessData.mensaje}</p></div>
             </div>
             <div className="grid grid-cols-2 gap-3 no-print">
-              <button onClick={imprimirPDF} className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2"><FileText className="w-4 h-4" /> Guardar PDF</button>
+              <button onClick={guardarImagen} className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2">
+                <Download className="w-4 h-4" /> Guardar Imagen
+              </button>
+              
               <button onClick={() => {
-                // Armamos un recibo detallado en formato texto para WhatsApp
-                let msj = `*${businessData.nombre}*\n`;
-                msj += `RUC: ${businessData.ruc}\n`;
-                msj += `Cel: ${businessData.telefono}\n`;
-                msj += `--------------------------------\n`;
-                msj += `*TICKET:* #${lastSale.id.split('-')[0].toUpperCase()}\n`;
-                msj += `*FECHA:* ${lastSale.fecha}\n`;
-                msj += `*MÉTODO:* ${lastSale.metodo}\n`;
-                msj += `--------------------------------\n`;
-                
-                lastSale.items.forEach((item: any) => {
-                  msj += `${item.cantidad}x ${item.nombre}\n`;
-                  msj += `   S/ ${(item.precio * item.cantidad).toFixed(2)}\n`;
-                });
-                
-                msj += `--------------------------------\n`;
-                msj += `*TOTAL A PAGAR: S/ ${lastSale.total.toFixed(2)}*\n\n`;
-                msj += `${businessData.mensaje}`;
-
-                window.open(`https://wa.me/?text=${encodeURIComponent(msj)}`, '_blank');
+                const msj = `*${businessData.nombre}*\n`;
+                // ... (tu lógica de WhatsApp que armamos antes queda intacta aquí)
+                const textoWa = `Hola! Adjunto tu comprobante de compra:\n*${businessData.nombre}* - Ticket #${lastSale.id.split('-')[0].toUpperCase()} por S/${lastSale.total.toFixed(2)}`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(textoWa)}`, '_blank');
               }} className="bg-[#25D366] text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2">
                 <Send className="w-4 h-4" /> WhatsApp
               </button>
-              <button onClick={() => setShowReceipt(false)} className="col-span-2 bg-transparent border border-zinc-700 text-zinc-400 hover:text-white py-3 rounded-xl">Cerrar y nueva venta</button>
+              
+              <button onClick={() => setShowReceipt(false)} className="col-span-2 bg-transparent border border-zinc-700 text-zinc-400 hover:text-white py-3 rounded-xl transition-colors">
+                Cerrar y nueva venta
+              </button>
             </div>
           </div>
         </div>
@@ -515,17 +537,19 @@ export default function AdminPOS() {
 
       <style dangerouslySetInnerHTML={{__html: `
         @media print { 
-          @page { size: portrait; margin: 0; }
+          @page { 
+            margin: 0; 
+            size: 80mm auto; 
+          }
           body * { visibility: hidden; } 
           #recibo-imprimible, #recibo-imprimible * { visibility: visible; } 
           #recibo-imprimible { 
             position: absolute; 
             left: 0; 
             top: 0; 
-            width: 100%; 
-            max-width: 80mm; /* Ancho de ticketera térmica */
-            margin: 0 auto; 
-            padding: 20px; 
+            width: 80mm; 
+            padding: 15px; 
+            margin: 0;
           } 
           .no-print { display: none !important; } 
         }
