@@ -3,20 +3,46 @@
 import React, { useState, useEffect, use } from 'react';
 import Navbar from '@/components/Navbar';
 import ProductCard from '@/components/ProductCard';
-import { products } from '@/data/products';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+// Importamos la conexión real
+import { supabase } from '@/lib/supabase';
 
 export default function CategoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
 
-  // Estados para que funcionen la búsqueda y los filtros
+  // Estados para productos y filtros
+  const [productosBase, setProductosBase] = useState<any[]>([]); // Todos los que vienen de la DB
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Al cargar la página, marca la categoría según la URL (si no es 'todos')
+  // 1. Cargar productos desde Supabase
+  useEffect(() => {
+    async function fetchProducts() {
+      // Traemos los productos cruzados con sus categorías para saber a qué sección pertenecen[cite: 3]
+      const { data, error } = await supabase
+        .from('productos')
+        .select('*, categorias(slug)');
+
+      if (data && !error) {
+        const formateados = data.map(p => ({
+          id: p.codigo,
+          name: p.nombre,
+          price: p.precio,
+          image: p.imagen_url,
+          category: p.categorias?.slug || 'otros'
+        }));
+        setProductosBase(formateados);
+      }
+      setLoading(false);
+    }
+    fetchProducts();
+  }, []);
+
+  // 2. Ajustar filtros según la URL (si entra por el menú)
   useEffect(() => {
     if (id !== 'todos') {
       setSelectedCategories([id]);
@@ -25,7 +51,6 @@ export default function CategoryPage({ params }: { params: Promise<{ id: string 
     }
   }, [id]);
 
-  // Lógica para marcar/desmarcar filtros
   const toggleCategory = (catId: string) => {
     if (selectedCategories.includes(catId)) {
       setSelectedCategories(selectedCategories.filter(c => c !== catId));
@@ -34,21 +59,20 @@ export default function CategoryPage({ params }: { params: Promise<{ id: string 
     }
   };
 
-  // Botón "Eliminar filtros"
   const clearFilters = () => {
     setSelectedCategories([]);
     setSearchTerm('');
     router.push('/categoria/todos');
   };
 
-  // Motor de filtrado (cruza la búsqueda con las casillas marcadas)
-  const filteredProducts = products.filter(product => {
+  // 3. Filtrar los productos cargados según lo que marque el usuario
+  const filteredProducts = productosBase.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(product.category);
     return matchesSearch && matchesCategory;
   });
 
-  const tituloPantalla = id === 'camisetas' ? 'Camisetas Oficiales' : id === 'fuerza' ? 'Equipamiento de Fuerza' : 'Todos los productos';
+  const tituloPantalla = id === 'camisetas' ? 'Camisetas Oficiales' : id === 'fuerza' ? 'Equipamiento de Fuerza' : id === 'balones' ? 'Balones' : 'Todos los productos';
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-900 antialiased">
@@ -87,6 +111,16 @@ export default function CategoryPage({ params }: { params: Promise<{ id: string 
                     />
                     <span className="text-sm font-medium text-gray-700 group-hover:text-[#002B5E]">Camisetas</span>
                   </label>
+                  {/* Agregada la categoría de balones al filtro */}
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedCategories.includes('balones')}
+                      onChange={() => toggleCategory('balones')}
+                      className="w-4 h-4 rounded border-gray-300 text-[#002B5E] focus:ring-[#002B5E]" 
+                    />
+                    <span className="text-sm font-medium text-gray-700 group-hover:text-[#002B5E]">Balones</span>
+                  </label>
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <input 
                       type="checkbox" 
@@ -106,7 +140,7 @@ export default function CategoryPage({ params }: { params: Promise<{ id: string 
             
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               
-              {/* BUSCADOR FUNCIONAL */}
+              {/* BUSCADOR */}
               <div className="relative w-full sm:max-w-md">
                 <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
                 <input 
@@ -121,7 +155,6 @@ export default function CategoryPage({ params }: { params: Promise<{ id: string 
               <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
                 <span className="text-sm font-bold text-gray-900">{filteredProducts.length} RESULTADOS</span>
                 
-                {/* Botón para abrir filtros en celular */}
                 <button 
                   onClick={() => setIsMobileFiltersOpen(true)}
                   className="lg:hidden flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm font-bold"
@@ -131,8 +164,10 @@ export default function CategoryPage({ params }: { params: Promise<{ id: string 
               </div>
             </div>
 
-            {/* GRID DE PRODUCTOS (2 columnas en celular, 3 en PC) */}
-            {filteredProducts.length > 0 ? (
+            {/* GRID DE PRODUCTOS */}
+            {loading ? (
+               <div className="text-center py-20 text-[#002B5E] font-bold">Cargando catálogo...</div>
+            ) : filteredProducts.length > 0 ? (
               <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
                 {filteredProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
@@ -168,6 +203,15 @@ export default function CategoryPage({ params }: { params: Promise<{ id: string 
                     className="w-5 h-5 rounded border-gray-300 text-[#002B5E]" 
                   />
                   <span className="text-base font-medium">Camisetas</span>
+                </label>
+                <label className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedCategories.includes('balones')}
+                    onChange={() => toggleCategory('balones')}
+                    className="w-5 h-5 rounded border-gray-300 text-[#002B5E]" 
+                  />
+                  <span className="text-base font-medium">Balones</span>
                 </label>
                 <label className="flex items-center gap-3">
                   <input 
