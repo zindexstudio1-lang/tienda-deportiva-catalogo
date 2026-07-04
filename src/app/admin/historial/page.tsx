@@ -2,42 +2,63 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Search, CreditCard, Banknote, CalendarDays, FileText, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Search, CreditCard, Banknote, CalendarDays, FileText, TrendingUp, Send } from 'lucide-react';
 import Link from 'next/link';
 
 export default function HistorialVentas() {
   const [ventas, setVentas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filtroTiempo, setFiltroTiempo] = useState('hoy');
+  const [limite, setLimite] = useState(20);
 
   useEffect(() => {
-    cargarHistorial();
-  }, []);
+    cargarHistorial(filtroTiempo);
+  }, [filtroTiempo, limite]);
 
- async function cargarHistorial() {
-  setLoading(true);
-  try {
-    // 1. Probamos solo la tabla de ventas, sin nada más
-    const { data, error } = await supabase
+ async function cargarHistorial(filtro: string) {
+    setLoading(true);
+
+    let query = supabase
       .from('ventas')
-      .select('*')
+      .select(`
+        id,
+        created_at,
+        total,
+        metodo_pago,
+        detalle_ventas!detalle_ventas_venta_id_fkey (
+          cantidad,
+          precio_unitario,
+          productos ( nombre, codigo )
+        )
+      `)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error("Error crítico en la tabla ventas:", error);
-    } else {
-      console.log("¡Éxito! Datos de ventas recibidos:", data);
-      setVentas(data || []);
-      
-      // Si esto funciona, ahora podemos intentar agregar el join:
-      // const { data: dataConJoin, error: errorConJoin } = await supabase...
+    const ahora = new Date();
+    
+    if (filtro === 'hoy') {
+      const inicioHoy = new Date(ahora.setHours(0,0,0,0)).toISOString();
+      query = query.gte('created_at', inicioHoy);
+    } else if (filtro === '7dias') {
+      const hace7Dias = new Date(ahora.setDate(ahora.getDate() - 7)).toISOString();
+      query = query.gte('created_at', hace7Dias);
+    } else if (filtro === 'mes') {
+      const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1).toISOString();
+      query = query.gte('created_at', inicioMes);
     }
-  } catch (err) {
-    console.error("Error inesperado en la conexión:", err);
-  } finally {
+
+    // NUEVO: Le aplicamos el límite antes de ejecutar
+    query = query.limit(limite);
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Error al cargar ventas:", error);
+    } else {
+      setVentas(data || []);
+    }
     setLoading(false);
   }
-}
 
   // Métricas rápidas
   const totalIngresos = ventas.reduce((acc, v) => acc + v.total, 0);
@@ -99,6 +120,28 @@ export default function HistorialVentas() {
           </div>
         </div>
 
+        {/* FILTROS DE TIEMPO (CUADRE DE CAJA) */}
+        <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-2">
+          {[
+            { id: 'hoy', label: 'Hoy' },
+            { id: '7dias', label: 'Últimos 7 Días' },
+            { id: 'mes', label: 'Este Mes' },
+            { id: 'todo', label: 'Histórico Completo' }
+          ].map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFiltroTiempo(f.id)}
+              className={`px-4 py-2 rounded-xl font-bold text-sm whitespace-nowrap transition-colors border ${
+                filtroTiempo === f.id 
+                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/50' 
+                : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         {/* BUSCADOR */}
         <div className="relative">
           <Search className="absolute left-4 top-3.5 h-5 w-5 text-zinc-500" />
@@ -145,11 +188,23 @@ export default function HistorialVentas() {
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-4 self-start sm:self-auto">
+                      <div className="flex items-center gap-3 self-start sm:self-auto">
                         <span className={`px-3 py-1 rounded-full text-xs font-bold border ${venta.metodo_pago === 'Yape' ? 'bg-[#742284]/10 text-[#742284] border-[#742284]/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
                           {venta.metodo_pago}
                         </span>
-                        <span className="text-xl font-black text-white">S/ {venta.total.toFixed(2)}</span>
+                        <span className="text-xl font-black text-white mr-2">S/ {venta.total.toFixed(2)}</span>
+                        
+                        {/* NUEVO BOTÓN DE WHATSAPP */}
+                        <button 
+                          onClick={() => {
+                            const textoWa = `Hola! Te compartimos el comprobante de tu compra:\n*SPORTS STORE* - Ticket #${ticketId} por S/${venta.total.toFixed(2)}\n¡Gracias por tu preferencia!`;
+                            window.open(`https://wa.me/?text=${encodeURIComponent(textoWa)}`, '_blank');
+                          }}
+                          className="p-2 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded-lg transition-colors border border-[#25D366]/20 flex items-center gap-2"
+                          title="Reenviar por WhatsApp"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
 
@@ -177,6 +232,20 @@ export default function HistorialVentas() {
             </div>
           )}
         </div>
+      
+      {/* BOTÓN CARGAR MÁS */}
+        {ventasFiltradas.length >= limite && !loading && (
+          <div className="flex justify-center pt-4 pb-8">
+            <button
+              onClick={() => setLimite(limite + 20)}
+              className="px-6 py-3 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 font-bold rounded-xl transition-colors flex items-center gap-2"
+            >
+              Cargar más tickets
+            </button>
+          </div>
+        )}
+      
+      
       </main>
     </div>
   );

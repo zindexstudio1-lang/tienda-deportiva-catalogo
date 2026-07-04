@@ -44,7 +44,8 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
           image: productData.imagen_url,
           description: productData.descripcion || 'Producto de alta calidad.',
           category: productData.categorias?.slug,
-          sizes: sizesArray 
+          sizes: sizesArray,
+          stock_actual: productData.stock_actual
         };
         setProduct(formattedProduct);
 
@@ -109,8 +110,9 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">Precio Web</span>
             </div>
 
+            {/* SELECTOR DE TALLAS */}
             {product.sizes && product.sizes.length > 0 && (
-              <div className="mb-8 border-b border-gray-300 pb-8">
+              <div className="mb-6 border-b border-gray-300 pb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2">Tallas</label>
                 <select 
                   className={`w-full border rounded-md p-2.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#002B5E] transition-colors ${showError ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
@@ -126,9 +128,38 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               </div>
             )}
 
-            <button onClick={handleAddToCart} disabled={isAdded} className={`flex items-center justify-center gap-2 w-full md:w-auto px-8 py-3 rounded text-sm font-bold text-white transition-all shadow-sm ${(product.sizes && !selectedSize) ? 'bg-gray-400 cursor-not-allowed' : isAdded ? 'bg-green-600 hover:bg-green-700' : 'bg-[#8B8970] hover:bg-[#72705b]'}`}>
+            {/* ALERTAS DE STOCK DINÁMICAS */}
+            {product.stock_actual <= 0 ? (
+              <div className="bg-red-50 text-red-600 border border-red-200 p-3 rounded-lg text-sm font-bold mb-6">
+                Lo sentimos, este producto se encuentra temporalmente agotado.
+              </div>
+            ) : product.stock_actual < 8 ? (
+              <div className="bg-orange-50 text-orange-700 border border-orange-200 p-3 rounded-lg text-sm font-bold mb-6 flex items-center gap-2">
+                <span className="animate-pulse">🔥</span> 
+                ¡Apresúrate! Solo nos quedan {product.stock_actual} unidades disponibles.
+              </div>
+            ) : null}
+
+            {/* BOTÓN DE AGREGAR (Se bloquea si el stock es 0) */}
+            <button 
+              onClick={handleAddToCart} 
+              disabled={isAdded || product.stock_actual <= 0} 
+              className={`flex items-center justify-center gap-2 w-full md:w-auto px-8 py-3 rounded text-sm font-bold transition-all shadow-sm ${
+                product.stock_actual <= 0 
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed' 
+                  : (product.sizes && !selectedSize) 
+                    ? 'bg-gray-400 text-white cursor-not-allowed' 
+                    : isAdded 
+                      ? 'bg-green-600 hover:bg-green-700 text-white' 
+                      : 'bg-[#8B8970] hover:bg-[#72705b] text-white'
+              }`}
+            >
               {isAdded ? <Check className="h-5 w-5" /> : <ShoppingBag className="h-5 w-5" />}
-              {isAdded ? '¡Agregado al carrito!' : 'Agregar al carrito'}
+              {product.stock_actual <= 0 
+                ? 'Sin stock disponible' 
+                : isAdded 
+                  ? '¡Agregado al carrito!' 
+                  : 'Agregar al carrito'}
             </button>
           </div>
         </div>

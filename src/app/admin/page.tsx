@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ShoppingCart, Trash2, CreditCard, Banknote, Search, Plus, Minus, PackagePlus, Settings, X, FileText, Send, Edit, PlusCircle, Filter, Download } from 'lucide-react';
+import { ShoppingCart, Trash2, CreditCard, Banknote, Search, Plus, Minus, PackagePlus, Settings, X, FileText, Send, Edit, PlusCircle, Filter, Download, UploadCloud } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import Link from 'next/link';
+import toast, { Toaster } from 'react-hot-toast'; // NUEVO: Importación de Toasts
 
 export default function AdminPOS() {
   const [productos, setProductos] = useState<any[]>([]);
@@ -22,6 +23,7 @@ export default function AdminPOS() {
   const [showProductModal, setShowProductModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   
   const [showSettings, setShowSettings] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -39,7 +41,8 @@ export default function AdminPOS() {
   });
 
   const initialStateProd = {
-    nombre: '', precio: '', stock: '', imagen: '', categoria_id: '', slug_cat: '', descripcion: '', tallas: ''
+    nombre: '', precio: '', stock: '0', imagen: '', categoria_id: '', slug_cat: '', descripcion: '', tallas: '',
+    stock_tallas: { S: 0, M: 0, L: 0, XL: 0 }
   };
   const [prodForm, setProdForm] = useState(initialStateProd);
 
@@ -57,12 +60,42 @@ export default function AdminPOS() {
     }
   }
 
+  // --- LÓGICA DE IMÁGENES (SUPABASE STORAGE) ---
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setIsUploadingImage(true);
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `productos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('imagenes')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('imagenes').getPublicUrl(filePath);
+      setProdForm(prev => ({ ...prev, imagen: data.publicUrl }));
+      toast.success('Imagen subida con éxito');
+    } catch (error) {
+      toast.error('Error al subir imagen. Verifica tener un bucket público llamado "imagenes" en Supabase.');
+      console.error(error);
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
   // --- LÓGICA DE TICKET ---
   const agregarAlTicket = (prod: any) => {
     const existe = ticket.find(item => item.id === prod.id);
     if (existe) {
       if (existe.cantidad < prod.stock_actual) {
         setTicket(ticket.map(item => item.id === prod.id ? { ...item, cantidad: item.cantidad + 1 } : item));
+      } else {
+        toast.error('No hay más stock disponible de este producto');
       }
     } else {
       setTicket([...ticket, { ...prod, cantidad: 1 }]);
@@ -74,7 +107,10 @@ export default function AdminPOS() {
       if (item.id === id) {
         const nuevaCant = item.cantidad + delta;
         if (nuevaCant <= 0) return null; 
-        if (nuevaCant > item.stock_actual) return item; 
+        if (nuevaCant > item.stock_actual) {
+          toast.error('Límite de stock alcanzado');
+          return item; 
+        }
         return { ...item, cantidad: nuevaCant };
       }
       return item;
@@ -83,7 +119,6 @@ export default function AdminPOS() {
 
   const calcularTotal = () => ticket.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
   
-  // --- LÓGICA DE FILTRADO UNIFICADO ---
   const productosFiltrados = productos.filter(p => {
     const matchesSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || p.codigo.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategoryFilter === 'todas' || p.categoria_id?.toString() === selectedCategoryFilter;
@@ -98,23 +133,52 @@ export default function AdminPOS() {
     setShowProductModal(true);
   };
 
-  const abrirModalEditar = (e: React.MouseEvent, prod: any) => {
+  const abrirModalEditar = async (e: React.MouseEvent, prod: any) => {
     e.stopPropagation(); 
     setIsEditing(true);
     setEditingId(prod.id);
     
+    // 1. Identificamos qué categoría es para saber si tiene tallas
+    const slugCat = prod.categoria_id 
+      ? (categoriasDb.find(c => c.id === prod.categoria_id)?.slug || '') 
+      : (categoriasDb[0]?.slug || '');
+
+    // 2. Cargamos los datos básicos al formulario de inmediato
     setProdForm({
+      ...initialStateProd,
       nombre: prod.nombre || '',
       precio: prod.precio ? prod.precio.toString() : '0',
       stock: prod.stock_actual ? prod.stock_actual.toString() : '0',
       imagen: prod.imagen_url || '',
       categoria_id: prod.categoria_id ? prod.categoria_id.toString() : (categoriasDb[0]?.id.toString() || ''),
-      slug_cat: prod.categoria_id ? (categoriasDb.find(c => c.id === prod.categoria_id)?.slug || '') : (categoriasDb[0]?.slug || ''),
+      slug_cat: slugCat,
       descripcion: prod.descripcion || '',
-      tallas: prod.tallas || ''
+      tallas: prod.tallas || '',
+      stock_tallas: { S: 0, M: 0, L: 0, XL: 0 } // Ponemos 0 temporalmente
     });
     
     setShowProductModal(true);
+
+    // 3. ¡LA MAGIA! Si es camiseta, vamos a buscar su stock exacto a la base de datos
+    if (slugCat === 'camisetas') {
+      const { data: variantes } = await supabase
+        .from('producto_variantes')
+        .select('talla, stock')
+        .eq('producto_id', prod.id);
+
+      if (variantes && variantes.length > 0) {
+        const tallasRecuperadas = { S: 0, M: 0, L: 0, XL: 0 };
+        // Llenamos el objeto con lo que devolvió Supabase
+        variantes.forEach(v => {
+          if (tallasRecuperadas[v.talla as keyof typeof tallasRecuperadas] !== undefined) {
+            tallasRecuperadas[v.talla as keyof typeof tallasRecuperadas] = v.stock;
+          }
+        });
+        
+        // Actualizamos los cuadritos con los números reales
+        setProdForm(prev => ({ ...prev, stock_tallas: tallasRecuperadas }));
+      }
+    }
   };
 
   const generarSKU = (slugCat: string) => {
@@ -123,37 +187,76 @@ export default function AdminPOS() {
     return `${prefijo}-${randomHex}`;
   };
 
-  const guardarProducto = async (e: React.FormEvent) => {
+const guardarProducto = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    let stockFinal = parseInt(prodForm.stock) || 0;
+    let tallasString = prodForm.tallas;
+
+    if (prodForm.slug_cat === 'camisetas') {
+      const { S, M, L, XL } = prodForm.stock_tallas;
+      stockFinal = Number(S) + Number(M) + Number(L) + Number(XL);
+      
+      const tallasDisponibles = [];
+      if (Number(S) > 0) tallasDisponibles.push('S');
+      if (Number(M) > 0) tallasDisponibles.push('M');
+      if (Number(L) > 0) tallasDisponibles.push('L');
+      if (Number(XL) > 0) tallasDisponibles.push('XL');
+      tallasString = tallasDisponibles.join(',');
+    }
+
     const payload = {
       nombre: prodForm.nombre,
       precio: parseFloat(prodForm.precio),
-      stock_actual: parseInt(prodForm.stock),
+      stock_actual: stockFinal,
       imagen_url: prodForm.imagen || '/placeholder.png',
-      categoria_id: parseInt(prodForm.categoria_id),
+      categoria_id: prodForm.categoria_id, // Sin el parseInt para evitar el error NULL
       descripcion: prodForm.descripcion || 'Producto de alta calidad.',
-      tallas: prodForm.tallas || null
+      tallas: tallasString || null
     };
 
     if (isEditing && editingId) {
       const { error } = await supabase.from('productos').update(payload).eq('id', editingId);
       if (!error) {
-        alert('Producto actualizado correctamente');
+        
+        // --- NUEVO: LÓGICA DE TALLAS PARA ACTUALIZAR ---
+        if (prodForm.slug_cat === 'camisetas') {
+          // 1. Borramos las tallas viejas por seguridad
+          await supabase.from('producto_variantes').delete().eq('producto_id', editingId);
+          // 2. Preparamos las nuevas
+          const variantes = Object.entries(prodForm.stock_tallas)
+            .filter(([_, cant]) => Number(cant) > 0)
+            .map(([talla, cant]) => ({ producto_id: editingId, talla, stock: Number(cant) }));
+          // 3. Las insertamos
+          if (variantes.length > 0) await supabase.from('producto_variantes').insert(variantes);
+        }
+
+        toast.success('Producto actualizado correctamente');
         setShowProductModal(false);
         cargarDatos();
       } else {
-        alert('Error al actualizar');
+        toast.error('Error al actualizar el producto');
       }
     } else {
       const skuGenerado = generarSKU(prodForm.slug_cat);
-      const { error } = await supabase.from('productos').insert([{ ...payload, codigo: skuGenerado }]);
-      if (!error) {
-        alert(`Producto creado. SKU: ${skuGenerado}`);
+      const { data: newProd, error } = await supabase.from('productos').insert([{ ...payload, codigo: skuGenerado }]).select().single();
+      
+      if (!error && newProd) {
+
+        // --- NUEVO: LÓGICA DE TALLAS PARA CREAR ---
+        if (prodForm.slug_cat === 'camisetas') {
+          const variantes = Object.entries(prodForm.stock_tallas)
+            .filter(([_, cant]) => Number(cant) > 0)
+            .map(([talla, cant]) => ({ producto_id: newProd.id, talla, stock: Number(cant) }));
+          
+          if (variantes.length > 0) await supabase.from('producto_variantes').insert(variantes);
+        }
+
+        toast.success(`Producto creado. SKU: ${skuGenerado}`);
         setShowProductModal(false);
         cargarDatos();
       } else {
-        alert('Error al crear');
+        toast.error('Error al crear el producto');
       }
     }
   };
@@ -168,12 +271,12 @@ export default function AdminPOS() {
       setProdForm({ ...prodForm, categoria_id: data.id.toString(), slug_cat: data.slug });
       setShowNewCatInput(false);
       setNewCatName('');
+      toast.success('Categoría creada con éxito');
     } else {
-      alert('Error creando categoría');
+      toast.error('Error creando categoría');
     }
   };
 
-  // --- LÓGICA DE VENTA ---
   const procesarVenta = async () => {
     if (ticket.length === 0) return;
     setIsProcessing(true);
@@ -193,8 +296,9 @@ export default function AdminPOS() {
       cargarDatos();
       setIsMobileTicketOpen(false);
       setShowReceipt(true);
+      toast.success('¡Venta registrada con éxito!');
     } catch (error) {
-      alert("Hubo un error al registrar la venta.");
+      toast.error("Hubo un error al registrar la venta.");
     } finally {
       setIsProcessing(false);
     }
@@ -205,28 +309,44 @@ export default function AdminPOS() {
     if (!elemento) return;
 
     try {
-      // Usamos toPng de html-to-image con alta resolución (pixelRatio: 2)
       const dataUrl = await toPng(elemento, {
         backgroundColor: '#ffffff',
         pixelRatio: 2,
-        style: {
-          margin: '0', // Asegura que no haya márgenes extraños al renderizar
-        }
+        style: { margin: '0' }
       });
 
-      // Forzamos la descarga
       const link = document.createElement('a');
       link.href = dataUrl;
       link.download = `Ticket-${lastSale?.id.split('-')[0].toUpperCase()}.png`;
       link.click();
+      toast.success('Ticket descargado');
     } catch (error) {
       console.error("Error al generar la imagen:", error);
-      alert("Hubo un problema al guardar el ticket.");
+      toast.error("Hubo un problema al guardar el ticket.");
     }
   };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-gray-200 font-sans selection:bg-cyan-500/30 flex flex-col">
+      
+      {/* NUEVO: CONFIGURACIÓN DE TOASTS */}
+      <Toaster 
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: '#18181b', 
+            color: '#fff',
+            border: '1px solid #27272a', 
+          },
+          success: {
+            iconTheme: { primary: '#06b6d4', secondary: '#18181b' },
+          },
+          error: {
+            iconTheme: { primary: '#ef4444', secondary: '#18181b' },
+          }
+        }} 
+      />
+
       <header className="bg-zinc-900 border-b border-zinc-800 p-4 flex justify-between items-center z-10">
         <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
           Z-INDEX <span className="text-cyan-400">POS</span>
@@ -239,15 +359,14 @@ export default function AdminPOS() {
             <Settings className="w-5 h-5" />
           </button>
           <Link href="/admin/historial" className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-white font-bold text-sm transition-colors mr-2">
-  Ver Historial
-</Link>
+            Ver Historial
+          </Link>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
         <section className="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden">
           
-          {/* BARRA DE BÚSQUEDA Y FILTROS */}
           <div className="flex flex-col sm:flex-row gap-2 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-5 w-5 text-zinc-500" />
@@ -255,20 +374,20 @@ export default function AdminPOS() {
             </div>
             
             <div className="flex gap-2">
-              {/* BOTÓN DE FILTRO MINIMALISTA CON SELECT INVISIBLE */}
               <div className="relative w-12 h-12 sm:h-[50px]">
                 <div className={`w-full h-full flex items-center justify-center rounded-xl border transition-colors ${selectedCategoryFilter !== 'todas' ? 'bg-zinc-800 border-cyan-500/50 text-cyan-400' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}>
                   <Filter className="w-5 h-5" />
                 </div>
+                {/* SOLUCIÓN AL DISEÑO DEL SELECT: Clases en las options */}
                 <select
                   value={selectedCategoryFilter}
                   onChange={(e) => setSelectedCategoryFilter(e.target.value)}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   title="Filtrar por categoría"
                 >
-                  <option value="todas">Todas las categorías</option>
+                  <option value="todas" className="bg-zinc-900 text-white">Todas las categorías</option>
                   {categoriasDb.map(cat => (
-                    <option key={cat.id} value={cat.id.toString()}>{cat.nombre}</option>
+                    <option key={cat.id} value={cat.id.toString()} className="bg-zinc-900 text-white">{cat.nombre}</option>
                   ))}
                 </select>
               </div>
@@ -286,19 +405,46 @@ export default function AdminPOS() {
                   <button 
                     onClick={() => agregarAlTicket(prod)}
                     disabled={prod.stock_actual <= 0}
-                    className={`w-full h-full border rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all active:scale-95 ${prod.stock_actual <= 0 ? 'bg-zinc-900/50 border-red-900/30 opacity-50 cursor-not-allowed' : 'bg-zinc-900 border-zinc-800 hover:border-cyan-500/50 hover:bg-zinc-800/50'}`}
+                    className={`w-full h-full border rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all active:scale-95 relative ${
+                      prod.stock_actual <= 0 
+                      ? 'bg-zinc-900/50 border-red-900/30 opacity-60 cursor-not-allowed grayscale' 
+                      : 'bg-zinc-900 border-zinc-800 hover:border-cyan-500/50 hover:bg-zinc-800/50'
+                    }`}
                   >
-                    <span className="absolute top-2 left-2 text-[10px] font-mono text-zinc-500 bg-zinc-950 px-1.5 py-0.5 rounded">{prod.codigo}</span>
-                    <img src={prod.imagen_url} alt={prod.nombre} className="w-16 h-16 sm:w-20 sm:h-20 object-contain mb-3 drop-shadow-md mt-4" />
+                    <span className="absolute top-2 left-2 text-[10px] font-mono text-zinc-500 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800 z-10">
+                      {prod.codigo}
+                    </span>
+
+                    {prod.stock_actual === 0 ? (
+                      <span className="absolute top-2 right-2 bg-red-500/10 text-red-500 border border-red-500/20 px-2 py-0.5 rounded text-[10px] font-black z-10 shadow-lg shadow-red-500/10">
+                        AGOTADO
+                      </span>
+                    ) : prod.stock_actual < 8 ? (
+                      <span className="absolute top-2 right-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded text-[10px] font-bold animate-pulse z-10">
+                        ¡Solo quedan {prod.stock_actual}!
+                      </span>
+                    ) : null}
+
+                    <img src={prod.imagen_url} alt={prod.nombre} className={`w-16 h-16 sm:w-20 sm:h-20 object-contain mb-3 drop-shadow-md mt-5 transition-transform ${prod.stock_actual > 0 && 'group-hover:scale-110'}`} />
                     <p className="text-xs font-semibold text-gray-300 line-clamp-2">{prod.nombre}</p>
-                    <p className="text-cyan-400 font-bold mt-1">S/ {prod.precio.toFixed(2)}</p>
-                    <p className={`text-[10px] sm:text-xs mt-2 font-bold ${prod.stock_actual <= 0 ? 'text-red-500' : 'text-zinc-500'}`}>{prod.stock_actual <= 0 ? 'AGOTADO' : `Stock: ${prod.stock_actual}`}</p>
+                    
+                    {prod.tallas && prod.tallas !== 'NULO' && (
+                      <div className="mt-2 flex flex-wrap justify-center gap-1">
+                        {prod.tallas.split(',').map((talla: string, idx: number) => (
+                          <span key={idx} className="text-[9px] font-bold bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded border border-zinc-700">
+                            {talla.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="text-cyan-400 font-black text-lg mt-2">S/ {prod.precio.toFixed(2)}</p>
                   </button>
                   
-                  {/* BOTÓN EDITAR (Lápiz) */}
                   <button 
                     onClick={(e) => abrirModalEditar(e, prod)}
-                    className="absolute top-2 right-2 p-1.5 bg-zinc-800 border border-zinc-700 rounded text-zinc-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors z-10 lg:opacity-0 group-hover:opacity-100"
+                    className="absolute top-10 right-2 p-1.5 bg-zinc-800 border border-zinc-700 rounded text-zinc-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors z-20 lg:opacity-0 group-hover:opacity-100 shadow-xl"
+                    title="Editar Producto"
                   >
                     <Edit className="w-3 h-3" />
                   </button>
@@ -382,35 +528,22 @@ export default function AdminPOS() {
               <button onClick={() => setShowProductModal(false)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={guardarProducto} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 mb-1">Nombre del producto</label>
-                <input required type="text" value={prodForm.nombre} onChange={e => setProdForm({...prodForm, nombre: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 mb-1">Precio (S/)</label>
-                  <input required type="number" step="0.01" value={prodForm.precio} onChange={e => setProdForm({...prodForm, precio: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 mb-1">Stock</label>
-                  <input required type="number" value={prodForm.stock} onChange={e => setProdForm({...prodForm, stock: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none" />
-                </div>
-              </div>
               
               <div>
                 <label className="block text-xs font-bold text-zinc-500 mb-1">Categoría</label>
                 <div className="flex gap-2">
                   {!showNewCatInput ? (
                     <>
+                      {/* SOLUCIÓN AL DISEÑO DEL SELECT DEL FORMULARIO */}
                       <select 
                         value={prodForm.categoria_id} 
                         onChange={e => {
                           const cat = categoriasDb.find(c => c.id === parseInt(e.target.value));
                           setProdForm({...prodForm, categoria_id: e.target.value, slug_cat: cat ? cat.slug : ''});
                         }}
-                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none"
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none font-bold"
                       >
-                        {categoriasDb.map(cat => <option key={cat.id} value={cat.id}>{cat.nombre}</option>)}
+                        {categoriasDb.map(cat => <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.nombre}</option>)}
                       </select>
                       <button type="button" onClick={() => setShowNewCatInput(true)} className="bg-zinc-800 px-3 rounded-lg text-cyan-400 hover:bg-zinc-700 flex items-center justify-center gap-1 text-xs font-bold"><PlusCircle className="w-4 h-4"/> Nueva</button>
                     </>
@@ -425,18 +558,83 @@ export default function AdminPOS() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-zinc-500 mb-1">URL de Imagen (Opcional)</label>
-                <input type="text" value={prodForm.imagen} onChange={e => setProdForm({...prodForm, imagen: e.target.value})} placeholder="/ejemplo.png o https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none text-sm" />
+                <label className="block text-xs font-bold text-zinc-500 mb-1">Nombre del producto</label>
+                <input required type="text" value={prodForm.nombre} onChange={e => setProdForm({...prodForm, nombre: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none" />
               </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 mb-1">Precio (S/)</label>
+                  <input required type="number" step="0.01" value={prodForm.precio} onChange={e => setProdForm({...prodForm, precio: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none" />
+                </div>
+                
+                {/* LÓGICA DINÁMICA DE STOCK */}
+                {prodForm.slug_cat === 'camisetas' ? (
+                  <div className="col-span-1 border border-zinc-800 p-2 rounded-lg bg-zinc-950/50">
+                    <label className="block text-[10px] font-bold text-cyan-400 mb-2 uppercase tracking-wider text-center">Stock por Talla</label>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                      {['S', 'M', 'L', 'XL'].map((talla) => (
+                        <div key={talla}>
+                          <label className="block text-[9px] text-zinc-500 font-bold text-center mb-1">{talla}</label>
+                          <input 
+                            type="number" 
+                            min="0"
+                            value={prodForm.stock_tallas[talla as keyof typeof prodForm.stock_tallas]}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setProdForm({
+                                ...prodForm, 
+                                // Si está vacío lo dejamos vacío para que puedas escribir, si no, guardamos el número
+                                stock_tallas: { ...prodForm.stock_tallas, [talla]: val === '' ? '' : parseInt(val) }
+                              });
+                            }}
+                            /* Clases especiales para ocultar las flechas molestas del input number */
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded p-1.5 text-white text-center text-sm focus:border-cyan-500 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 mb-1">Stock General</label>
+                    <input 
+                      required 
+                      type="number" 
+                      min="0" 
+                      value={prodForm.stock} 
+                      onChange={e => setProdForm({...prodForm, stock: e.target.value})} 
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none" 
+                    />
+                  </div>
+                )}
+              </div>
+
               <div>
-                <label className="block text-xs font-bold text-zinc-500 mb-1">Tallas Disponibles (Separar con coma)</label>
-                <input type="text" value={prodForm.tallas} onChange={e => setProdForm({...prodForm, tallas: e.target.value})} placeholder="Ej: S, M, L, XL" className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none text-sm" />
+                <label className="block text-xs font-bold text-zinc-500 mb-1">Imagen del Producto</label>
+                <div className="flex gap-2">
+                  <input type="text" value={prodForm.imagen} onChange={e => setProdForm({...prodForm, imagen: e.target.value})} placeholder="URL de la imagen..." className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none text-sm" />
+                  
+                  <div className="relative">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleImageUpload} 
+                      disabled={isUploadingImage}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" 
+                    />
+                    <div className={`h-full px-4 rounded-lg flex items-center justify-center gap-2 border font-bold text-sm transition-colors ${isUploadingImage ? 'bg-zinc-800 border-zinc-700 text-zinc-500' : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20'}`}>
+                      {isUploadingImage ? 'Subiendo...' : <><UploadCloud className="w-4 h-4"/> Archivo</>}
+                    </div>
+                  </div>
+                </div>
               </div>
+              
               <div>
                 <label className="block text-xs font-bold text-zinc-500 mb-1">Descripción del Producto</label>
                 <textarea rows={3} value={prodForm.descripcion} onChange={e => setProdForm({...prodForm, descripcion: e.target.value})} placeholder="Escribe los detalles aquí..." className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:border-cyan-500 outline-none text-sm custom-scrollbar" />
               </div>
-              <button type="submit" className="w-full bg-cyan-500 text-zinc-950 font-bold py-3 rounded-lg mt-2">
+              <button type="submit" className="w-full bg-cyan-500 text-zinc-950 font-bold py-3 rounded-lg mt-2 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.5)] transition-shadow">
                 {isEditing ? 'Guardar Cambios' : 'Crear Producto'}
               </button>
             </form>
@@ -444,7 +642,6 @@ export default function AdminPOS() {
         </div>
       )}
 
-      {/* MODAL AJUSTES RECIBO */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
@@ -475,7 +672,6 @@ export default function AdminPOS() {
         </div>
       )}
 
-      {/* MODAL RECIBO / PDF */}
       {showReceipt && lastSale && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="w-full max-w-md flex flex-col gap-4">
@@ -520,7 +716,6 @@ export default function AdminPOS() {
               
               <button onClick={() => {
                 const msj = `*${businessData.nombre}*\n`;
-                // ... (tu lógica de WhatsApp que armamos antes queda intacta aquí)
                 const textoWa = `Hola! Adjunto tu comprobante de compra:\n*${businessData.nombre}* - Ticket #${lastSale.id.split('-')[0].toUpperCase()} por S/${lastSale.total.toFixed(2)}`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(textoWa)}`, '_blank');
               }} className="bg-[#25D366] text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2">
@@ -537,20 +732,10 @@ export default function AdminPOS() {
 
       <style dangerouslySetInnerHTML={{__html: `
         @media print { 
-          @page { 
-            margin: 0; 
-            size: 80mm auto; 
-          }
+          @page { margin: 0; size: 80mm auto; }
           body * { visibility: hidden; } 
           #recibo-imprimible, #recibo-imprimible * { visibility: visible; } 
-          #recibo-imprimible { 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
-            width: 80mm; 
-            padding: 15px; 
-            margin: 0;
-          } 
+          #recibo-imprimible { position: absolute; left: 0; top: 0; width: 80mm; padding: 15px; margin: 0; } 
           .no-print { display: none !important; } 
         }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; } 
