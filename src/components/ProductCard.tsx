@@ -1,8 +1,5 @@
 import React from 'react';
 import Link from 'next/link';
-// Puedes mantener tu importación de Product, pero usaremos 'any' en las props 
-// para aceptar el 'stock_actual' sin que TypeScript se queje por ahora.
-import { Product } from '../data/products'; 
 
 interface ProductCardProps {
   product: any; 
@@ -18,7 +15,7 @@ export default function ProductCard({ product }: ProductCardProps) {
       
       <div className="aspect-square w-full overflow-hidden bg-white relative p-4 flex items-center justify-center">
         
-        {/* NUEVO: BADGES DE STOCK */}
+        {/* BADGES DE STOCK */}
         {product.stock_actual <= 0 ? (
           <span className="absolute top-3 right-3 bg-red-600 text-white px-2 py-1 rounded text-[10px] font-black z-20 shadow-sm">
             AGOTADO
@@ -35,9 +32,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
         />
-        <span className="absolute top-3 left-3 rounded-md bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-bold tracking-widest text-[#002B5E] border border-gray-200 shadow-sm z-10">
-          {product.sku || product.id}
-        </span>
+        {/* ¡Eliminamos la etiqueta del SKU de aquí! El cliente ya no la verá */}
       </div>
 
       <div className="flex flex-1 flex-col p-4 border-t border-gray-100">
@@ -46,12 +41,17 @@ export default function ProductCard({ product }: ProductCardProps) {
         </h3>
         
         <div className="mt-4 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-red-600">S/ {product.price.toFixed(2)}</span>
-            <span className="bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">Precio web</span>
+          {/* SOLUCIÓN AL DISEÑO EN MÓVIL: Flex-wrap, whitespace-nowrap y shrink-0 */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-sm font-bold text-red-600 whitespace-nowrap">
+              S/ {product.price.toFixed(2)}
+            </span>
+            <span className="bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase whitespace-nowrap shrink-0">
+              Precio web
+            </span>
           </div>
           
-          {/* NUEVO: BOTÓN DINÁMICO */}
+          {/* BOTÓN DINÁMICO */}
           {product.stock_actual <= 0 ? (
             <div className="w-full text-center rounded bg-gray-200 px-3 py-2 text-xs font-bold text-gray-500 cursor-not-allowed">
               Agotado
